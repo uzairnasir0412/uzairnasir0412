@@ -169,7 +169,7 @@ jobs:
           # --------------------------------------------------------------------------- #
           GRADIENT = (
               '<defs><linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">'
-              '<stop offset="0" stop-color="#0891B2"/><stop offset="1" stop-color="#38BDF8"/>'
+              '<stop offset="0" stop-color="#0EA5E9"/><stop offset="1" stop-color="#7DD3FC"/>'
               '</linearGradient></defs>'
           )
 
@@ -184,15 +184,15 @@ jobs:
                   f'<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" viewBox="0 0 {W} {H}" '
                   f'role="img" aria-label="{esc(r["name"])}">',
                   GRADIENT,
-                  '<rect x="6" y="6" width="408" height="148" rx="14" fill="#0B1020" stroke="#172554" stroke-width="2"/>',
+                  '<rect x="6" y="6" width="408" height="148" rx="14" fill="#2B3544" stroke="#475569" stroke-width="2"/>',
                   '<rect x="26" y="6" width="48" height="3" rx="1.5" fill="url(#accent)"/>',
                   f'<text x="26" y="44" fill="#F8FAFC" font-family="{FONT}" font-size="18" font-weight="700">{esc(name)}</text>',
               ]
               if lines:
                   for i, line in enumerate(lines):
-                      out.append(f'<text x="26" y="{72 + i * 20}" fill="#94A3B8" font-family="{FONT}" font-size="13">{esc(line)}</text>')
+                      out.append(f'<text x="26" y="{72 + i * 20}" fill="#CBD5E1" font-family="{FONT}" font-size="13">{esc(line)}</text>')
               else:
-                  out.append(f'<text x="26" y="72" fill="#64748B" font-family="{FONT}" font-size="13">No description yet.</text>')
+                  out.append(f'<text x="26" y="72" fill="#94A3B8" font-family="{FONT}" font-size="13">No description yet.</text>')
 
               x = 26
               lang = r.get("language")
@@ -201,8 +201,8 @@ jobs:
                   out.append(f'<text x="{x + 17}" y="132" fill="#E4E4E7" font-family="{FONT}" font-size="12">{esc(lang)}</text>')
                   x += 17 + int(7.2 * len(lang)) + 18
               if r.get("stargazers_count", 0) > 0:
-                  out.append(f'<text x="{x}" y="132" fill="#38BDF8" font-family="{FONT}" font-size="12">★ {r["stargazers_count"]}</text>')
-              out.append(f'<text x="394" y="132" fill="#64748B" font-family="{FONT}" font-size="12" text-anchor="end">'
+                  out.append(f'<text x="{x}" y="132" fill="#7DD3FC" font-family="{FONT}" font-size="12">★ {r["stargazers_count"]}</text>')
+              out.append(f'<text x="394" y="132" fill="#94A3B8" font-family="{FONT}" font-size="12" text-anchor="end">'
                          f'Updated {fmt_date(r.get("pushed_at"))}</text>')
               out.append("</svg>")
               return "\n".join(out)
@@ -214,13 +214,13 @@ jobs:
                   f'<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" viewBox="0 0 {W} {H}" '
                   f'role="img" aria-label="Most used languages">',
                   GRADIENT.replace("</defs>", '<clipPath id="bar"><rect x="40" y="78" width="760" height="14" rx="7"/></clipPath></defs>'),
-                  f'<rect x="1" y="1" width="{W - 2}" height="{H - 2}" rx="18" fill="#0B1020" stroke="#172554" stroke-width="2"/>',
+                  f'<rect x="1" y="1" width="{W - 2}" height="{H - 2}" rx="18" fill="#2B3544" stroke="#475569" stroke-width="2"/>',
                   '<rect x="40" y="28" width="4" height="22" rx="2" fill="url(#accent)"/>',
                   f'<text x="54" y="46" fill="#F8FAFC" font-family="{FONT}" font-size="20" font-weight="700">Most Used Languages</text>',
               ]
               total = sum(totals.values())
               if not total:
-                  out.append(f'<text x="40" y="130" fill="#94A3B8" font-family="{FONT}" font-size="15">No language data yet.</text></svg>')
+                  out.append(f'<text x="40" y="130" fill="#CBD5E1" font-family="{FONT}" font-size="15">No language data yet.</text></svg>')
                   return "\n".join(out)
 
               top = totals.most_common(7)
@@ -228,7 +228,7 @@ jobs:
               if rest > 0:
                   top.append(("Other", rest))
 
-              out.append('<g clip-path="url(#bar)"><rect x="40" y="78" width="760" height="14" fill="#1E293B"/>')
+              out.append('<g clip-path="url(#bar)"><rect x="40" y="78" width="760" height="14" fill="#3B475A"/>')
               x = 40.0
               for name, size in top:
                   w = 760 * size / total
@@ -241,7 +241,7 @@ jobs:
                   lx, ly = 40 + col * 390, 128 + row * 28
                   out.append(f'<circle cx="{lx + 6}" cy="{ly - 5}" r="6" fill="{lang_color(name)}"/>')
                   out.append(f'<text x="{lx + 22}" y="{ly}" fill="#E4E4E7" font-family="{FONT}" font-size="15">{esc(name)}</text>')
-                  out.append(f'<text x="{lx + 340}" y="{ly}" fill="#94A3B8" font-family="{FONT}" font-size="15" '
+                  out.append(f'<text x="{lx + 340}" y="{ly}" fill="#CBD5E1" font-family="{FONT}" font-size="15" '
                              f'text-anchor="end">{100 * size / total:.1f}%</text>')
               out.append("</svg>")
               return "\n".join(out)
@@ -259,15 +259,15 @@ jobs:
                   f'<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" viewBox="0 0 {W} {H}" '
                   f'role="img" aria-label="GitHub statistics">',
                   GRADIENT,
-                  f'<rect x="1" y="1" width="{W - 2}" height="{H - 2}" rx="18" fill="#0B1020" stroke="#172554" stroke-width="2"/>',
+                  f'<rect x="1" y="1" width="{W - 2}" height="{H - 2}" rx="18" fill="#2B3544" stroke="#475569" stroke-width="2"/>',
               ]
               for i, (label, value) in enumerate(items):
                   x = 40 + i * 195
-                  out.append(f'<rect x="{x}" y="30" width="175" height="90" rx="14" fill="#111A33" stroke="#1E3A5F"/>')
+                  out.append(f'<rect x="{x}" y="30" width="175" height="90" rx="14" fill="#364152" stroke="#526074"/>')
                   out.append(f'<rect x="{x + 16}" y="30" width="40" height="3" rx="1.5" fill="url(#accent)"/>')
-                  out.append(f'<text x="{x + 87}" y="80" fill="#38BDF8" font-family="{FONT}" font-size="34" '
+                  out.append(f'<text x="{x + 87}" y="80" fill="#7DD3FC" font-family="{FONT}" font-size="34" '
                              f'font-weight="700" text-anchor="middle">{esc(value)}</text>')
-                  out.append(f'<text x="{x + 87}" y="104" fill="#94A3B8" font-family="{FONT}" font-size="13" '
+                  out.append(f'<text x="{x + 87}" y="104" fill="#CBD5E1" font-family="{FONT}" font-size="13" '
                              f'letter-spacing="1" text-anchor="middle">{esc(label.upper())}</text>')
               out.append("</svg>")
               return "\n".join(out)
@@ -358,7 +358,7 @@ jobs:
 
           TEMPLATE = r"""<div align="center">
 
-          <img src="https://capsule-render.vercel.app/api?type=waving&color=0:09090B,50:172554,100:0891B2&height=220&section=header&text=UZAIR%20NASIR&fontSize=55&fontColor=FFFFFF&fontAlignY=38&desc=Computer%20Science%20Student%20%7C%20Software%20Developer&descSize=16&descAlignY=60&animation=fadeIn" width="100%"/>
+          <img src="https://capsule-render.vercel.app/api?type=waving&color=0:334155,50:475569,100:64748B&height=220&section=header&text=UZAIR%20NASIR&fontSize=55&fontColor=FFFFFF&fontAlignY=38&desc=Computer%20Science%20Student%20%7C%20Software%20Developer&descSize=16&descAlignY=60&animation=fadeIn" width="100%"/>
 
           </div>
 
@@ -397,10 +397,10 @@ jobs:
 
           ## Contact
 
-          <a href="https://github.com/uzairnasir0412"><img src="https://img.shields.io/badge/GitHub-uzairnasir0412-181717?style=flat-square&logo=github&logoColor=white" alt="GitHub"/></a>
+          <a href="https://github.com/uzairnasir0412"><img src="https://img.shields.io/badge/GitHub-uzairnasir0412-475569?style=flat-square&logo=github&logoColor=white" alt="GitHub"/></a>
           <a href="@@LINKEDIN@@"><img src="https://img.shields.io/badge/LinkedIn-Connect-0A66C2?style=flat-square&logo=linkedin&logoColor=white" alt="LinkedIn"/></a>
 
-          <img src="https://capsule-render.vercel.app/api?type=waving&color=0:0891B2,50:172554,100:09090B&height=100&section=footer" width="100%"/>
+          <img src="https://capsule-render.vercel.app/api?type=waving&color=0:64748B,50:475569,100:334155&height=100&section=footer" width="100%"/>
           """
 
 
