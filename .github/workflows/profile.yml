@@ -1,19 +1,12 @@
 # =============================================================================
-#  ONE-FILE AUTO PROFILE  —  save as:  .github/workflows/profile.yml
-#  in your profile repo  (uzairnasir0412/uzairnasir0412)
+#  ONE-FILE AUTO PROFILE  -  lives at:  .github/workflows/profile.yml
+#  (in your profile repo  uzairnasir0412/uzairnasir0412)
 #
-#  What it does, completely automatically (hourly + on every edit of this file):
-#    * rebuilds your whole README.md from live GitHub data
-#    * latest projects, currently-working-on, recent activity
-#    * generates stats + language-chart SVG cards (assets/)
-#    * generates the contribution snake animation
+#  Rebuilds README.md and the cards in assets/ from live GitHub data:
+#  every hour, when you run it manually, and whenever this file is edited.
 #
-#  To change your profile text/design: edit the TEMPLATE inside this file.
-#  (README.md is regenerated, so edits made directly to README.md get overwritten.)
-#
-#  One-time setup: Settings -> Actions -> General -> Workflow permissions
-#                  -> "Read and write permissions" -> Save.
-#                  Then Actions tab -> "Auto Profile" -> Run workflow.
+#  To change your text or design, edit the TEMPLATE inside this file.
+#  README.md is regenerated, so edits made directly to README.md are overwritten.
 # =============================================================================
 name: Auto Profile
 
@@ -31,12 +24,13 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: auto-profile
+  cancel-in-progress: true
+
 jobs:
   readme:
     runs-on: ubuntu-latest
-    concurrency:
-      group: auto-profile-readme
-      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
 
@@ -44,31 +38,22 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Build README and SVG cards
+      - name: Build README and cards
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_USERNAME: ${{ github.repository_owner }}
         run: |
           python - <<'PY'
-          #!/usr/bin/env python3
-          """
-          Auto-update the GitHub profile README from live GitHub data.
-
-          - Standard library only (no pip install needed).
-          - Rewrites the <!--START_SECTION:name--> ... <!--END_SECTION:name--> blocks in README.md
-          - Generates assets/stats.svg and assets/languages.svg
-          - Runs inside GitHub Actions (.github/workflows/update-profile.yml)
-          """
+          """Builds the whole profile README + SVG cards from live GitHub data (stdlib only)."""
           from __future__ import annotations
 
           import hashlib
           import html
           import json
           import os
-          import re
           import sys
+          import textwrap
           import urllib.error
-          import urllib.parse
           import urllib.request
           from collections import Counter
           from datetime import datetime
@@ -82,8 +67,8 @@ jobs:
           README = ROOT / "README.md"
           ASSETS = ROOT / "assets"
 
-          MAX_PROJECTS = 6      # rows in the "Latest Projects" table
-          MAX_EVENTS = 6        # lines in "Recent Activity"
+          MAX_PROJECTS = 6      # project cards shown (use an even number)
+          MAX_EVENTS = 5        # lines in "Recent Activity"
           MAX_LANG_REPOS = 60   # repos scanned for the language chart
 
           FONT = "'Segoe UI', Ubuntu, 'Helvetica Neue', Arial, sans-serif"
@@ -149,7 +134,7 @@ jobs:
 
 
           # --------------------------------------------------------------------------- #
-          # Small utilities
+          # Utilities
           # --------------------------------------------------------------------------- #
           def esc(value) -> str:
               return html.escape(str(value), quote=True)
@@ -157,7 +142,7 @@ jobs:
 
           def fmt_date(iso: str | None) -> str:
               if not iso:
-                  return "—"
+                  return "-"
               d = datetime.strptime(iso, "%Y-%m-%dT%H:%M:%SZ")
               return f"{d.day} {d:%b %Y}"
 
@@ -168,12 +153,8 @@ jobs:
               return FALLBACK_COLORS[int(hashlib.md5(name.encode()).hexdigest()[:2], 16) % len(FALLBACK_COLORS)]
 
 
-          def lang_badge(lang: str | None) -> str:
-              if not lang:
-                  return "—"
-              label = urllib.parse.quote(lang.replace("-", "--").replace("_", "__"), safe="")
-              color = lang_color(lang).lstrip("#")
-              return f"![{lang}](https://img.shields.io/badge/{label}-{color}?style=flat-square)"
+          def short_hash(text: str) -> str:
+              return hashlib.md5(text.encode()).hexdigest()[:8]
 
 
           def write_if_changed(path: Path, content: str) -> bool:
@@ -184,105 +165,62 @@ jobs:
 
 
           # --------------------------------------------------------------------------- #
-          # README sections
-          # --------------------------------------------------------------------------- #
-          def render_current(repos: list[dict]) -> str:
-              if not repos:
-                  return "🔭 **Currently working on:** something new — stay tuned!"
-              r = repos[0]
-              desc = f" — {r['description']}" if r.get("description") else ""
-              return f"🔭 **Currently working on:** [**{r['name']}**]({r['html_url']}){desc}"
-
-
-          def render_projects(repos: list[dict]) -> str:
-              top = repos[:MAX_PROJECTS]
-              if not top:
-                  return "_No public projects yet — the first repository you upload will appear here automatically._"
-              rows = [
-                  "| 📦 Project | 📝 Description | 💻 Language | ⭐ Stars | 🕒 Updated |",
-                  "|:--|:--|:--|:-:|:-:|",
-              ]
-              for r in top:
-                  desc = (r.get("description") or "—").replace("|", "\\|").strip()
-                  if len(desc) > 90:
-                      desc = desc[:87].rstrip() + "..."
-                  rows.append(
-                      f"| [**{r['name']}**]({r['html_url']}) | {desc} | {lang_badge(r.get('language'))} "
-                      f"| {r['stargazers_count']} | {fmt_date(r.get('pushed_at'))} |"
-                  )
-              return "\n".join(rows)
-
-
-          def describe_event(e: dict) -> tuple[str, str] | None:
-              """Return (dedupe_key, markdown line) for an event, or None to skip it."""
-              repo = e["repo"]["name"]
-              if repo.lower() == f"{USERNAME}/{USERNAME}".lower():
-                  return None  # ignore the profile repo itself (bot commits)
-              link = f"[{repo}](https://github.com/{repo})"
-              p = e.get("payload", {})
-              t = e["type"]
-
-              if t == "PushEvent":
-                  n = p.get("size") or len(p.get("commits", []) or [])
-                  what = f"Pushed {n} commit{'s' if n != 1 else ''} to" if n else "Pushed code to"
-                  text = f"🔨 {what} {link}"
-              elif t == "CreateEvent" and p.get("ref_type") == "repository":
-                  text = f"🚀 Created repository {link}"
-              elif t == "PullRequestEvent" and p.get("action") in ("opened", "closed"):
-                  merged = p.get("pull_request", {}).get("merged")
-                  verb = "Merged a pull request in" if merged else f"{p['action'].capitalize()} a pull request in"
-                  text = f"🔀 {verb} {link}"
-              elif t == "IssuesEvent" and p.get("action") == "opened":
-                  text = f"🐛 Opened an issue in {link}"
-              elif t == "ReleaseEvent":
-                  text = f"📦 Published a release in {link}"
-              elif t == "ForkEvent":
-                  text = f"🍴 Forked {link}"
-              elif t == "PublicEvent":
-                  text = f"🌍 Open-sourced {link}"
-              elif t == "WatchEvent":
-                  text = f"⭐ Starred {link}"
-              else:
-                  return None
-
-              return f"{t}:{repo}", f"- {text} · `{fmt_date(e['created_at'])}`"
-
-
-          def render_activity() -> str:
-              events = gh_safe(f"/users/{USERNAME}/events/public?per_page=100", [])
-              seen, lines = set(), []
-              for e in events:
-                  item = describe_event(e)
-                  if not item or item[0] in seen:
-                      continue
-                  seen.add(item[0])
-                  lines.append(item[1])
-                  if len(lines) >= MAX_EVENTS:
-                      break
-              return "\n".join(lines) if lines else "_No recent public activity yet._"
-
-
-          # --------------------------------------------------------------------------- #
           # SVG cards (generated, so they never depend on third-party servers)
           # --------------------------------------------------------------------------- #
+          GRADIENT = (
+              '<defs><linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">'
+              '<stop offset="0" stop-color="#0891B2"/><stop offset="1" stop-color="#38BDF8"/>'
+              '</linearGradient></defs>'
+          )
+
+
+          def build_project_svg(r: dict) -> str:
+              W, H = 420, 160
+              name = r["name"] if len(r["name"]) <= 30 else r["name"][:29] + "…"
+              desc = (r.get("description") or "").strip()
+              lines = textwrap.wrap(desc, width=50, max_lines=2, placeholder="…") if desc else []
+
+              out = [
+                  f'<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" viewBox="0 0 {W} {H}" '
+                  f'role="img" aria-label="{esc(r["name"])}">',
+                  GRADIENT,
+                  '<rect x="6" y="6" width="408" height="148" rx="14" fill="#0B1020" stroke="#172554" stroke-width="2"/>',
+                  '<rect x="26" y="6" width="48" height="3" rx="1.5" fill="url(#accent)"/>',
+                  f'<text x="26" y="44" fill="#F8FAFC" font-family="{FONT}" font-size="18" font-weight="700">{esc(name)}</text>',
+              ]
+              if lines:
+                  for i, line in enumerate(lines):
+                      out.append(f'<text x="26" y="{72 + i * 20}" fill="#94A3B8" font-family="{FONT}" font-size="13">{esc(line)}</text>')
+              else:
+                  out.append(f'<text x="26" y="72" fill="#64748B" font-family="{FONT}" font-size="13">No description yet.</text>')
+
+              x = 26
+              lang = r.get("language")
+              if lang:
+                  out.append(f'<circle cx="{x + 5}" cy="127" r="5" fill="{lang_color(lang)}"/>')
+                  out.append(f'<text x="{x + 17}" y="132" fill="#E4E4E7" font-family="{FONT}" font-size="12">{esc(lang)}</text>')
+                  x += 17 + int(7.2 * len(lang)) + 18
+              if r.get("stargazers_count", 0) > 0:
+                  out.append(f'<text x="{x}" y="132" fill="#38BDF8" font-family="{FONT}" font-size="12">★ {r["stargazers_count"]}</text>')
+              out.append(f'<text x="394" y="132" fill="#64748B" font-family="{FONT}" font-size="12" text-anchor="end">'
+                         f'Updated {fmt_date(r.get("pushed_at"))}</text>')
+              out.append("</svg>")
+              return "\n".join(out)
+
+
           def build_languages_svg(totals: Counter) -> str:
               W, H = 840, 250
               out = [
                   f'<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" viewBox="0 0 {W} {H}" '
                   f'role="img" aria-label="Most used languages">',
-                  '<defs>'
-                  '<linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">'
-                  '<stop offset="0" stop-color="#0891B2"/><stop offset="1" stop-color="#38BDF8"/></linearGradient>'
-                  '<clipPath id="bar"><rect x="40" y="78" width="760" height="14" rx="7"/></clipPath>'
-                  '</defs>',
+                  GRADIENT.replace("</defs>", '<clipPath id="bar"><rect x="40" y="78" width="760" height="14" rx="7"/></clipPath></defs>'),
                   f'<rect x="1" y="1" width="{W - 2}" height="{H - 2}" rx="18" fill="#0B1020" stroke="#172554" stroke-width="2"/>',
                   '<rect x="40" y="28" width="4" height="22" rx="2" fill="url(#accent)"/>',
                   f'<text x="54" y="46" fill="#F8FAFC" font-family="{FONT}" font-size="20" font-weight="700">Most Used Languages</text>',
               ]
               total = sum(totals.values())
               if not total:
-                  out.append(f'<text x="40" y="130" fill="#94A3B8" font-family="{FONT}" font-size="15">'
-                             'No language data yet — upload a project and this fills itself.</text></svg>')
+                  out.append(f'<text x="40" y="130" fill="#94A3B8" font-family="{FONT}" font-size="15">No language data yet.</text></svg>')
                   return "\n".join(out)
 
               top = totals.most_common(7)
@@ -320,8 +258,7 @@ jobs:
               out = [
                   f'<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" viewBox="0 0 {W} {H}" '
                   f'role="img" aria-label="GitHub statistics">',
-                  '<defs><linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">'
-                  '<stop offset="0" stop-color="#0891B2"/><stop offset="1" stop-color="#38BDF8"/></linearGradient></defs>',
+                  GRADIENT,
                   f'<rect x="1" y="1" width="{W - 2}" height="{H - 2}" rx="18" fill="#0B1020" stroke="#172554" stroke-width="2"/>',
               ]
               for i, (label, value) in enumerate(items):
@@ -337,160 +274,133 @@ jobs:
 
 
           # --------------------------------------------------------------------------- #
-          # EDIT ME: your profile text lives here. Everything between the triple quotes is
-          # your README. @@PLACEHOLDERS@@ are filled in automatically. Commit -> it rebuilds.
+          # README sections
+          # --------------------------------------------------------------------------- #
+          def render_current(repos: list[dict]) -> str:
+              if not repos:
+                  return ""
+              r = repos[0]
+              desc = f" — {r['description']}" if r.get("description") else ""
+              return f"Currently working on [**{r['name']}**]({r['html_url']}){desc}"
+
+
+          def render_projects(repos: list[dict], base: str) -> str:
+              top = repos[:MAX_PROJECTS]
+              ASSETS.mkdir(exist_ok=True)
+              for old in ASSETS.glob("project-*.svg"):          # remove cards that are no longer needed
+                  try:
+                      if int(old.stem.split("-")[1]) > len(top):
+                          old.unlink()
+                  except ValueError:
+                      pass
+              if not top:
+                  return "Projects will appear here as soon as I publish my first repository."
+
+              anchors = []
+              for i, r in enumerate(top, 1):
+                  svg = build_project_svg(r)
+                  write_if_changed(ASSETS / f"project-{i}.svg", svg)
+                  anchors.append(
+                      f'<a href="{esc(r["html_url"])}"><img src="{base}/project-{i}.svg?v={short_hash(svg)}" '
+                      f'alt="{esc(r["name"])}" width="48%"/></a>'
+                  )
+              rows = ["\n".join(anchors[i:i + 2]) for i in range(0, len(anchors), 2)]
+              return '<div align="center">\n\n' + "\n<br/>\n".join(rows) + "\n\n</div>"
+
+
+          def describe_event(e: dict) -> tuple[str, str] | None:
+              repo = e["repo"]["name"]
+              if repo.lower() == f"{USERNAME}/{USERNAME}".lower():
+                  return None  # ignore the profile repo itself (bot commits)
+              link = f"[{repo}](https://github.com/{repo})"
+              p = e.get("payload", {})
+              t = e["type"]
+
+              if t == "PushEvent":
+                  n = p.get("size") or len(p.get("commits", []) or [])
+                  text = f"Pushed {n} commit{'s' if n != 1 else ''} to {link}" if n else f"Pushed to {link}"
+              elif t == "CreateEvent" and p.get("ref_type") == "repository":
+                  text = f"Created repository {link}"
+              elif t == "PullRequestEvent" and p.get("action") in ("opened", "closed"):
+                  merged = p.get("pull_request", {}).get("merged")
+                  text = f"Merged a pull request in {link}" if merged else f"{p['action'].capitalize()} a pull request in {link}"
+              elif t == "IssuesEvent" and p.get("action") == "opened":
+                  text = f"Opened an issue in {link}"
+              elif t == "ReleaseEvent":
+                  text = f"Published a release in {link}"
+              elif t == "PublicEvent":
+                  text = f"Made {link} public"
+              else:
+                  return None
+              return f"{t}:{repo}", f"- {text} · `{fmt_date(e['created_at'])}`"
+
+
+          def render_activity() -> str:
+              events = gh_safe(f"/users/{USERNAME}/events/public?per_page=100", [])
+              seen, lines = set(), []
+              for e in events:
+                  item = describe_event(e)
+                  if not item or item[0] in seen:
+                      continue
+                  seen.add(item[0])
+                  lines.append(item[1])
+                  if len(lines) >= MAX_EVENTS:
+                      break
+              return "\n".join(lines) if lines else "No recent public activity."
+
+
+          # --------------------------------------------------------------------------- #
+          # EDIT ME: your profile text lives here. Everything between the triple quotes
+          # is your README; @@PLACEHOLDERS@@ are filled in automatically.
+          # Commit this file and the README rebuilds itself.
           # --------------------------------------------------------------------------- #
           LINKEDIN_URL = "https://www.linkedin.com/"   # <- put your real LinkedIn link here
 
           TEMPLATE = r"""<div align="center">
 
-          <img src="https://capsule-render.vercel.app/api?type=venom&color=0:09090B,50:172554,100:0891B2&height=260&section=header&text=UZAIR%20NASIR&fontSize=62&fontColor=FFFFFF&fontAlignY=40&desc=Computer%20Science%20Student%20%7C%20Software%20Developer&descSize=17&descAlignY=62&animation=twinkling" width="100%"/>
-
-          <img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=500&size=20&pause=1000&color=38BDF8&center=true&vCenter=true&width=700&lines=Computer+Science+Student+%40+COMSATS+Islamabad;Exploring+Artificial+Intelligence+%26+Machine+Learning;Building+Software+Projects;Learning+and+Growing+Every+Day" alt="Typing intro"/>
-
-          <br/>
-
-          <a href="https://github.com/uzairnasir0412"><img src="https://img.shields.io/badge/GitHub-uzairnasir0412-181717?style=for-the-badge&logo=github&logoColor=white"/></a>
-          <img src="https://img.shields.io/badge/COMSATS-Islamabad-0891B2?style=for-the-badge&logo=googlescholar&logoColor=white"/>
-          <img src="https://img.shields.io/badge/Focus-AI%20%26%20ML-172554?style=for-the-badge&logo=tensorflow&logoColor=white"/>
-          <img src="https://komarev.com/ghpvc/?username=uzairnasir0412&style=for-the-badge&color=0891B2&label=PROFILE+VIEWS"/>
+          <img src="https://capsule-render.vercel.app/api?type=waving&color=0:09090B,50:172554,100:0891B2&height=220&section=header&text=UZAIR%20NASIR&fontSize=55&fontColor=FFFFFF&fontAlignY=38&desc=Computer%20Science%20Student%20%7C%20Software%20Developer&descSize=16&descAlignY=60&animation=fadeIn" width="100%"/>
 
           </div>
 
-          ---
+          ## About
 
-          ## 👨‍💻 About Me
-
-          Hello! I'm **Uzair Nasir**, a Computer Science student at **COMSATS University Islamabad**, interested in software development, Artificial Intelligence, Machine Learning, databases, and problem-solving.
-
-          ```python
-          class UzairNasir:
-              university = "COMSATS University Islamabad"
-              studying   = "Computer Science"
-              interests  = ["Artificial Intelligence", "Machine Learning", "Software Engineering", "Databases"]
-              languages  = ["Java", "C++", "Python", "JavaScript"]
-              motto      = "Learn • Build • Improve • Repeat"
-          ```
+          I'm a Computer Science student at COMSATS University Islamabad, focused on software development, artificial intelligence and machine learning. I learn by building: my projects so far span Python applications, Java object-oriented design, C++ data structures, database systems and web development.
 
           @@CURRENT@@
 
-          ---
-
-          ## 🚀 Latest Projects
-
-          > 🔄 *This section updates automatically whenever I push to a repository.*
+          ## Featured Projects
 
           @@PROJECTS@@
 
-          <div align="center">
+          [View all repositories →](https://github.com/uzairnasir0412?tab=repositories)
 
-          <a href="https://github.com/uzairnasir0412?tab=repositories">
-          <img src="https://img.shields.io/badge/EXPLORE%20ALL%20REPOSITORIES-0891B2?style=for-the-badge&logo=github&logoColor=white"/>
-          </a>
+          ## Tech Stack
 
-          </div>
+          <img src="https://skillicons.dev/icons?i=java,cpp,python,javascript,html,css,mysql,mongodb,git,github,vscode,idea&theme=dark" alt="Tech stack"/>
 
-          ---
+          ## Coursework
 
-          ## 🧠 Computer Science Foundation
+          | Area | Subjects |
+          |:--|:--|
+          | Artificial Intelligence & ML | Artificial Intelligence & RAG Applications, Machine Learning |
+          | Core Computer Science | Data Structures & Algorithms, Object-Oriented Programming, Operating Systems |
+          | Databases | Database Systems, Advanced Database (MongoDB) |
+          | Web | Web Development (HTML, CSS, JavaScript) |
 
-          <div align="center">
-
-          | Subject | Area |
-          |:---|:---|
-          | 🤖 Artificial Intelligence & RAG Applications | AI Concepts & Algorithms |
-          | 📈 Machine Learning | ML Fundamentals |
-          | 🧮 Data Structures & Algorithms | Problem Solving |
-          | 🧱 Object-Oriented Programming | OOP Principles |
-          | 🗄️ Database Systems | Database Design & SQL |
-          | 🍃 Advanced Database | MongoDB & Advanced Concepts |
-          | ⚙️ Operating Systems | OS Fundamentals |
-          | 🌐 Web Development | HTML, CSS & JavaScript |
-
-          </div>
-
-          ---
-
-          ## 🛠️ Technologies & Tools
-
-          <div align="center">
-
-          **Languages**<br/>
-          <img src="https://skillicons.dev/icons?i=java,cpp,python,javascript&theme=dark" /><br/><br/>
-
-          **Web**<br/>
-          <img src="https://skillicons.dev/icons?i=html,css,javascript&theme=dark" /><br/><br/>
-
-          **Databases**<br/>
-          <img src="https://skillicons.dev/icons?i=mysql,mongodb&theme=dark" /><br/><br/>
-
-          **Tools**<br/>
-          <img src="https://skillicons.dev/icons?i=git,github,vscode,idea&theme=dark" />
-
-          </div>
-
-          ---
-
-          ## 📊 GitHub Statistics
-
-          > 🔄 *Generated automatically from my GitHub account.*
+          ## GitHub Overview
 
           @@STATS@@
 
-          <div align="center">
-
-          <br/>
-
-          <img width="75%" src="https://streak-stats.demolab.com?user=uzairnasir0412&theme=dark&hide_border=true&background=09090B&ring=38BDF8&fire=38BDF8&currStreakLabel=38BDF8&currStreakNum=E4E4E7&sideNums=E4E4E7&sideLabels=94A3B8&dates=94A3B8"/>
-
-          <br/><br/>
-
-          <img width="100%" src="https://github-readme-activity-graph.vercel.app/graph?username=uzairnasir0412&bg_color=09090B&color=38BDF8&line=0891B2&point=FFFFFF&area=true&area_color=0891B2&hide_border=true&custom_title=Contribution%20Graph"/>
-
-          </div>
-
-          ---
-
-          ## ⚡ Recent Activity
+          ## Recent Activity
 
           @@ACTIVITY@@
 
-          ---
+          ## Contact
 
-          ## 🐍 Contribution Snake
+          <a href="https://github.com/uzairnasir0412"><img src="https://img.shields.io/badge/GitHub-uzairnasir0412-181717?style=flat-square&logo=github&logoColor=white" alt="GitHub"/></a>
+          <a href="@@LINKEDIN@@"><img src="https://img.shields.io/badge/LinkedIn-Connect-0A66C2?style=flat-square&logo=linkedin&logoColor=white" alt="LinkedIn"/></a>
 
-          <div align="center">
-
-          <picture>
-            <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/uzairnasir0412/uzairnasir0412/output/github-snake-dark.svg" />
-            <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/uzairnasir0412/uzairnasir0412/output/github-snake.svg" />
-            <img alt="Contribution snake animation" src="https://raw.githubusercontent.com/uzairnasir0412/uzairnasir0412/output/github-snake-dark.svg" />
-          </picture>
-
-          </div>
-
-          ---
-
-          ## 🤝 Connect With Me
-
-          <div align="center">
-
-          <a href="https://github.com/uzairnasir0412">
-          <img src="https://img.shields.io/badge/GitHub-181717?style=for-the-badge&logo=github&logoColor=white"/>
-          </a>
-          <a href="@@LINKEDIN@@">
-          <img src="https://img.shields.io/badge/LinkedIn-0A66C2?style=for-the-badge&logo=linkedin&logoColor=white"/>
-          </a>
-
-          <br/><br/>
-
-          ### Building My Journey, One Project at a Time.
-
-          *Learn • Build • Improve • Repeat*
-
-          <img src="https://capsule-render.vercel.app/api?type=waving&color=0:0891B2,50:172554,100:09090B&height=140&section=footer" width="100%"/>
-
-          </div>
+          <img src="https://capsule-render.vercel.app/api?type=waving&color=0:0891B2,50:172554,100:09090B&height=100&section=footer" width="100%"/>
           """
 
 
@@ -499,6 +409,7 @@ jobs:
               repos = get_repos()
               totals = get_language_bytes(repos)
               default_branch = gh_safe(f"/repos/{USERNAME}/{USERNAME}", {}).get("default_branch", "main")
+              base = f"https://raw.githubusercontent.com/{USERNAME}/{USERNAME}/{default_branch}/assets"
 
               ASSETS.mkdir(exist_ok=True)
               stats_svg = build_stats_svg(user, repos, len(totals))
@@ -506,20 +417,16 @@ jobs:
               write_if_changed(ASSETS / "stats.svg", stats_svg)
               write_if_changed(ASSETS / "languages.svg", langs_svg)
 
-              v_stats = hashlib.md5(stats_svg.encode()).hexdigest()[:8]
-              v_langs = hashlib.md5(langs_svg.encode()).hexdigest()[:8]
-              base = f"https://raw.githubusercontent.com/{USERNAME}/{USERNAME}/{default_branch}/assets"
               stats_md = (
-                  '<div align="center">\n'
-                  f'<img src="{base}/stats.svg?v={v_stats}" alt="GitHub stats" width="100%"/>\n'
-                  '<br/><br/>\n'
-                  f'<img src="{base}/languages.svg?v={v_langs}" alt="Most used languages" width="100%"/>\n'
+                  '<div align="center">\n\n'
+                  f'<img src="{base}/stats.svg?v={short_hash(stats_svg)}" alt="GitHub statistics" width="100%"/>\n\n'
+                  f'<img src="{base}/languages.svg?v={short_hash(langs_svg)}" alt="Most used languages" width="100%"/>\n\n'
                   '</div>'
               )
 
               out = (
                   TEMPLATE.replace("@@CURRENT@@", render_current(repos))
-                  .replace("@@PROJECTS@@", render_projects(repos))
+                  .replace("@@PROJECTS@@", render_projects(repos, base))
                   .replace("@@STATS@@", stats_md)
                   .replace("@@ACTIVITY@@", render_activity())
                   .replace("@@LINKEDIN@@", LINKEDIN_URL)
@@ -543,23 +450,3 @@ jobs:
             git commit -m "chore: auto-update profile"
             git push
           fi
-
-  snake:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - name: Generate snake SVGs
-        uses: Platane/snk/svg-only@v3
-        with:
-          github_user_name: ${{ github.repository_owner }}
-          outputs: |
-            dist/github-snake.svg
-            dist/github-snake-dark.svg?palette=github-dark
-
-      - name: Publish to the "output" branch
-        uses: crazy-max/ghaction-github-pages@v4
-        with:
-          target_branch: output
-          build_dir: dist
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
